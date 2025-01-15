@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 )
 
 type (
@@ -17,25 +16,25 @@ type (
 		Name string
 		Desc string
 		cmd  reflect.Value
+		ctx  *Context
 		opts []*option
-		loc  *time.Location
 	}
 )
 
-func newSubCommand(s SubCommandInterface, loc *time.Location) *SubCommand {
+func newSubCommand(s SubCommandInterface) *SubCommand {
+
+	s.Init()
 	t := reflect.TypeOf(s)
 	sc := new(SubCommand)
-	sc.loc = loc
+	sc.Name = toSnakeCase(t.Elem().Name())
+	sc.Desc = ""
 	sc.cmd = reflect.ValueOf(s)
 	sc.opts = []*option{}
-	sc.Name = toSnakeCase(sc.cmd.Type().Name())
-	// sc.hasValidate = hasValidateMethod(t)
 
-	// if hasInitMethod(t) {
-	sc.cmd.MethodByName("Init").Call(nil)
-	// }
-	if hasDescField(t) {
-		sc.Desc = sc.cmd.FieldByName("Desc").String()
+	// description
+	field, ok := t.Elem().FieldByName("Desc")
+	if ok && field.Type.Kind() == reflect.String {
+		sc.Desc = sc.cmd.Elem().FieldByName("Desc").String()
 	}
 
 	return sc
@@ -48,7 +47,7 @@ func (sc *SubCommand) parse() error {
 	v := sc.cmd
 	t := sc.cmd.Type()
 	for i := 0; i < t.NumField(); i++ {
-		o := newOption(v.Field(i), t.Field(i), sc.loc)
+		o := newOption(v.Field(i), t.Field(i))
 		if o == nil {
 			continue
 		}

@@ -35,7 +35,7 @@ func (cmd *Command) parse() error {
 	v := reflect.ValueOf(cmd).Elem()
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
-		opt := newOption(v.Field(i), t.Field(i), cmd.ctx.loc)
+		opt := newOption(v.Field(i), t.Field(i))
 		if opt == nil {
 			continue
 		}
@@ -49,20 +49,13 @@ func (cmd *Command) Add(subCmd SubCommandInterface) error {
 }
 
 func (cmd *Command) addSubCmd(subCmd SubCommandInterface, force bool) error {
-	sc := newSubCommand(subCmd, cmd.ctx.loc)
-	if sc == nil {
-		return fmt.Errorf("an invalid command")
-	}
-	err := sc.parse()
-	if err != nil {
-		return err
-	}
-	name := sc.Name
-	if name == helpCmdName && !force {
+	sc := newSubCommand(subCmd)
+	if sc.Name == helpCmdName && !force {
 		return fmt.Errorf(`reserved command: help`)
 	}
-	cmd.ctx.subCmds[name] = sc
-	cmd.ctx.scOrder = append(cmd.ctx.scOrder, name)
+	sc.ctx = cmd.ctx
+	cmd.ctx.subCmds[sc.Name] = sc
+	cmd.ctx.scOrder = append(cmd.ctx.scOrder, sc.Name)
 	return nil
 }
 
@@ -81,26 +74,19 @@ func (cmd *Command) route(args []string) int {
 	return idx
 }
 
-// func (cmd *Command) parseArgs(args []string) error {
-// 	for _, arg := range args {
-// 		switch arg {
-// 		case "-h", "--help":
-// 			cmd.help = true
-// 		case "-r", "--report":
-// 			cmd.report = true
-// 		default:
-// 			return fmt.Errorf(`unknown option: %s`, arg)
-// 		}
-// 	}
-// 	return nil
-// }
-
 func (cmd *Command) showReport(ctx *Context) {
+	subCmdTime := time.UnixMicro(cmd.ctx.subCmdFinish).Sub(time.UnixMicro(cmd.ctx.subCmdStart))
+	cmdTime := time.Now().Sub(time.UnixMicro(cmd.ctx.cmdStart))
 	buf := strings.Builder{}
-	buf.WriteString("--------------------------------------------------\n")
+	buf.WriteString("\n")
+	buf.WriteString("------------------------------------------------------------\n")
 	buf.WriteString(" MMaco CLI Framework \n")
-	buf.WriteString("--------------------------------------------------\n")
-	fmt.Println(buf.String())
+	buf.WriteString("------------------------------------------------------------\n")
+	buf.WriteString(fmt.Sprintf(" DateTime:   %v\n", time.UnixMicro(cmd.ctx.cmdStart).In(cmd.ctx.loc)))
+	buf.WriteString(fmt.Sprintf(" Command:    %v\n", cmdTime))
+	buf.WriteString(fmt.Sprintf(" SubCommand: %v\n", subCmdTime))
+	buf.WriteString("------------------------------------------------------------\n")
+	println(buf.String())
 }
 
 func (cmd *Command) Run() error {
@@ -108,7 +94,7 @@ func (cmd *Command) Run() error {
 	in, out := []reflect.Value{}, []reflect.Value{}
 
 	// Add Help Command
-	err = cmd.addSubCmd(help{}, true)
+	err = cmd.addSubCmd(new(help), true)
 	if err != nil {
 		return err
 	}
@@ -124,13 +110,13 @@ func (cmd *Command) Run() error {
 	subCmdIdx := cmd.route(rowArgs)
 	subCmd := ""
 	if cmd.help { // passed -h or --help option.
-		println(1)
+		// println(11)
 		subCmd = helpCmdName
 	} else if subCmdIdx < 0 { // passed no sub command.
-		println(2)
+		// println(12)
 		subCmd = helpCmdName
 	} else {
-		println(3)
+		// println(13)
 		subCmd = cmd.ctx.RowArg(subCmdIdx)
 	}
 	sc := cmd.ctx.subCmds[subCmd]
